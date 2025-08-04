@@ -19,15 +19,15 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests pyyaml
+        run: pip install requests pyyaml pysocks
 
-      - name: Run script to generate proxy.yaml
+      - name: Run script to generate proxy.yaml and sub
         run: python generate.py
 
       - name: Commit and push changes
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
-          git add proxy.yaml
-          git commit -m "Auto update proxies" || echo "Nothing to commit"
+          git add proxy.yaml sub
+          git commit -m "Auto update proxies and sub" || echo "Nothing to commit"
           git push
