@@ -17,8 +17,14 @@ for idx, proxy in enumerate(proxies):
         }
         clash_proxies.append(clash_proxy)
     except ValueError:
+        # 跳过无效的代理
         continue
 
-config = {'proxies': clash_proxies}
+# 生成 YAML 配置
+config = {
+    'proxies': clash_proxies
+}
+
+# 写入 proxy.yaml 文件
 with open('proxy.yaml', 'w') as f:
     yaml.dump(config, f, default_flow_style=False)
