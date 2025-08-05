@@ -1,44 +1,142 @@
 import requests
 import yaml
-import socket
-import socks
+import logging
+from bs4 import BeautifulSoup
 import base64
 
-def test_proxy(ip, port):
+# 设置日志
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def test_proxy(ip, port, proxy_type):
+    """
+    测试代理是否可用
+    """
+    if proxy_type == 'http':
+        proxies = {'https': f'[invalid url, do not cite]
+    elif proxy_type == 'socks5':
+        proxies = {'https': f'socks5://{ip}:{port}'}
+    else:
+        return False
     try:
-        socks.set_default_proxy(socks.SOCKS5, ip, int(port))
-        socket.socket = socks.socksocket
-        response = requests.get('http://ip-api.com/json', timeout=5)
+        response = requests.get('[invalid url, do not cite] proxies=proxies, timeout=10)
+        logging.info(f"Proxy {ip}:{port} ({proxy_type}) test successful")
         return response.status_code == 200
-    except Exception:
+    except Exception as e:
+        logging.warning(f"Proxy {ip}:{port} ({proxy_type}) test failed: {str(e)}")
         return False
 
-url = "https://api.proxyscrape.com/v4/free-proxy-list/get?request=getproxies&protocol=socks5&timeout=10000&country=all&ssl=all&anonymity=all&skip=0&limit=2000"
-response = requests.get(url)
-proxies = response.text.splitlines()
+# 代理来源列表
+proxy_sources = [
+    {
+        'name': 'OpenProxyList',
+        'url': 'https://openproxylist.com/proxy/',
+        'type': 'html'
+    },
+    {
+        'name': 'RoosterkidSOCKS5',
+        'url': 'https://raw.githubusercontent.com/roosterkid/openproxylist/main/SOCKS5.txt',
+        'type': 'text',
+        'proxy_type': 'socks5'
+    },
+    {
+        'name': 'RoosterkidHTTPS',
+        'url': 'https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS.txt',
+        'type': 'text',
+        'proxy_type': 'http'
+    }
+]
 
-# 生成 Clash YAML 配置
+# 初始化代理列表
 clash_proxies = []
 sub_lines = []
-for idx, proxy in enumerate(proxies):
-    try:
-        ip, port = proxy.split(':')
-        if test_proxy(ip, port):
-            # Clash 格式
-            clash_proxy = {
-                'name': f'socks5-{idx}',
-                'type': 'socks5',
-                'server': ip,
-                'port': int(port),
-            }
-            clash_proxies.append(clash_proxy)
-            # Base64 编码的 socks5:// 链接
-            node_str = f'socks5://{ip}:{port}#{f"socks5-{idx}"}'
-            sub_lines.append(base64.b64encode(node_str.encode()).decode())
-    except ValueError:
-        continue
 
-# 保存 Clash YAML 配置
+# 处理每个代理来源
+for source in proxy_sources:
+    logging.info(f"Fetching proxies from {source['name']}")
+    try:
+        response = requests.get(source['url'], timeout=15)
+        if response.status_code != 200:
+            logging.warning(f"{source['name']} returned status code {response.status_code}")
+            continue
+        
+        if source['type'] == 'text':
+            # 处理文本文件（如 GitHub Raw 文件）
+            proxies = response.text.splitlines()
+            for idx, proxy in enumerate(proxies):
+                try:
+                    ip, port = proxy.split(':')
+                    proxy_type = source['proxy_type']
+                    # 测试代理（可选，根据需求启用或禁用）
+                    # if test_proxy(ip, int(port), proxy_type):
+                    name = f'{proxy_type}-{source["name"]}-{idx}'
+                    clash_proxy = {
+                        'name': name,
+                        'type': proxy_type,
+                        'server': ip,
+                        'port': int(port),
+                    }
+                    clash_proxies.append(clash_proxy)
+                    node_str = f'{proxy_type}://{ip}:{port}#{name}'
+                    sub_lines.append(base64.b64encode(node_str.encode()).decode())
+                    if len(clash_proxies) >= 50:  # 限制最大 50 个代理
+                        break
+                except ValueError:
+                    logging.warning(f"Invalid proxy format from {source['name']}: {proxy}")
+                    continue
+        elif source['type'] == 'html':
+            # 处理 HTML 页面（如 openproxylist.com）
+            soup = BeautifulSoup(response.text, 'html.parser')
+            table = soup.find('table')  # 假设代理列表在第一个表格中
+            if table:
+                rows = table.find_all('tr')[1:]  # 跳过表头
+                for idx, row in enumerate(rows):
+                    cells = row.find_all('td')
+                    if len(cells) >= 3:  # 假设 IP、Port、Type 是前三个列
+                        ip = cells[0].text.strip()
+                        port = cells[1].text.strip()
+                        proxy_type_raw = cells[2].text.strip().lower()
+                        if proxy_type_raw == 'socks5':
+                            proxy_type = 'socks5'
+                        elif proxy_type_raw in ['http', 'https']:
+                            proxy_type = 'http'
+                        else:
+                            continue
+                        try:
+                            port = int(port)
+                            # 测试代理（可选，根据需求启用或禁用）
+                            # if test_proxy(ip, port, proxy_type):
+                            name = f'{proxy_type}-{source["name"]}-{idx}'
+                            clash_proxy = {
+                                'name': name,
+                                'type': proxy_type,
+                                'server': ip,
+                                'port': port,
+                            }
+                            clash_proxies.append(clash_proxy)
+                            node_str = f'{proxy_type}://{ip}:{port}#{name}'
+                            sub_lines.append(base64.b64encode(node_str.encode()).decode())
+                            if len(clash_proxies) >= 50:  # 限制最大 50 个代理
+                                break
+                        except ValueError:
+                            logging.warning(f"Invalid proxy format from {source['name']}: {ip}:{port}")
+                            continue
+            else:
+                logging.warning(f"No table found in {source['name']} HTML")
+    except Exception as e:
+        logging.error(f"Failed to fetch from {source['name']}: {str(e)}")
+
+# 如果没有可用代理，添加占位符
+if not clash_proxies:
+    logging.warning("No valid proxies found, adding placeholder")
+    clash_proxies.append({
+        'name': 'placeholder',
+        'type': 'socks5',
+        'server': '127.0.0.1',
+        'port': 8080
+    })
+    sub_lines.append(base64.b64encode('socks5://127.0.0.1:8080#placeholder'.encode()).decode())
+
+# 生成 Clash 配置文件
 clash_config = {
     'proxies': clash_proxies,
     'proxy-groups': [
@@ -63,6 +161,8 @@ clash_config = {
 with open('proxy.yaml', 'w') as f:
     yaml.dump(clash_config, f, default_flow_style=False, allow_unicode=True)
 
-# 保存 Base64 编码的 sub 文件
+# 生成 Base64 编码的订阅文件
 with open('sub', 'w') as f:
     f.write('\n'.join(sub_lines))
+
+logging.info(f"Generated {len(clash_proxies)} proxies in proxy.yaml and sub")
