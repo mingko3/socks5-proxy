@@ -19,7 +19,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests pyyaml pysocks beautifulsoup4
+        run: pip install requests pyyaml beautifulsoup4
 
       - name: Run script to generate proxy.yaml and sub
         run: python generate.py
