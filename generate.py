@@ -69,7 +69,7 @@ for source in proxy_sources:
                     if len(ip_port) == 2:
                         ip, port = ip_port[0].strip(), int(ip_port[1].strip())
                         proxy_type = source['proxy_type']
-                        # 测试代理（可选，根据需求启用）
+                        # 启用测试以过滤无效代理（可选）
                         # if test_proxy(ip, port, proxy_type):
                         name = f'{proxy_type}-{source["name"]}-{idx}'
                         clash_proxy = {
@@ -107,7 +107,7 @@ for source in proxy_sources:
                             continue
                         try:
                             port = int(port)
-                            # 测试代理（可选，根据需求启用）
+                            # 启用测试以过滤无效代理（可选）
                             # if test_proxy(ip, port, proxy_type):
                             name = f'{proxy_type}-{source["name"]}-{idx}'
                             clash_proxy = {
