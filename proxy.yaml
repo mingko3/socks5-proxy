@@ -1,11 +1,17 @@
-proxies: []
+proxies:
+- name: placeholder
+  port: 8080
+  server: 127.0.0.1
+  type: socks5
 proxy-groups:
 - name: auto
   proxies:
+  - placeholder
   - DIRECT
   type: select
 - name: Proxy
-  proxies: []
+  proxies:
+  - placeholder
   type: select
 rules:
 - DOMAIN-SUFFIX,google.com,Proxy
