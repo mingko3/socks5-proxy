@@ -1,8 +1,8 @@
 import requests
 import yaml
 import logging
-from bs4 import BeautifulSoup
 import base64
+import re
 
 # 设置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -28,21 +28,10 @@ def test_proxy(ip, port, proxy_type):
 # 代理来源列表
 proxy_sources = [
     {
-        'name': 'OpenProxyList',
-        'url': 'https://openproxylist.com/proxy/',
-        'type': 'html'
-    },
-    {
-        'name': 'RoosterkidSOCKS5',
-        'url': 'https://raw.githubusercontent.com/roosterkid/openproxylist/main/SOCKS5.txt',
+        'name': 'OpenProxyListSOCKS5',
+        'url': 'https://openproxylist.com/socks5-list',
         'type': 'text',
         'proxy_type': 'socks5'
-    },
-    {
-        'name': 'RoosterkidHTTPS',
-        'url': 'https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS.txt',
-        'type': 'text',
-        'proxy_type': 'http'
     }
 ]
 
@@ -60,23 +49,25 @@ for source in proxy_sources:
             continue
         
         if source['type'] == 'text':
-            # 处理文本文件（如 GitHub Raw 文件）
+            # 处理文本格式（如 OpenProxyList SOCKS5 列表）
             proxies = [line.strip() for line in response.text.splitlines() if line.strip() and ':' in line]
-            logging.info(f"Raw data sample from {source['name']}: {proxies[:5]}")  # 调试：打印前 5 行
+            logging.info(f"Raw data sample from {source['name']}: {proxies[:5]}")
             for idx, proxy in enumerate(proxies):
                 try:
-                    ip_port = proxy.split(':', 1)  # 只分割前两个部分
-                    if len(ip_port) == 2:
-                        ip, port = ip_port[0].strip(), int(ip_port[1].strip())
+                    # 提取 IP:PORT，使用正则匹配数字和冒号
+                    match = re.search(r'[\d\.]+:\d+', proxy)
+                    if match:
+                        ip_port = match.group()
+                        ip, port = ip_port.split(':')
                         proxy_type = source['proxy_type']
                         # 启用测试以过滤无效代理（可选）
-                        # if test_proxy(ip, port, proxy_type):
+                        # if test_proxy(ip, int(port), proxy_type):
                         name = f'{proxy_type}-{source["name"]}-{idx}'
                         clash_proxy = {
                             'name': name,
                             'type': proxy_type,
                             'server': ip,
-                            'port': port,
+                            'port': int(port),
                         }
                         clash_proxies.append(clash_proxy)
                         node_str = f'{proxy_type}://{ip}:{port}#{name}'
@@ -86,46 +77,6 @@ for source in proxy_sources:
                 except (ValueError, IndexError) as e:
                     logging.warning(f"Invalid proxy format from {source['name']}: {proxy} - {str(e)}")
                     continue
-        elif source['type'] == 'html':
-            # 处理 HTML 页面（如 openproxylist.com）
-            soup = BeautifulSoup(response.text, 'html.parser')
-            table = soup.find('table')  # 假设代理列表在第一个表格中
-            if table:
-                rows = table.find_all('tr')[1:]  # 跳过表头
-                logging.info(f"Raw HTML table sample from {source['name']}: {rows[:2]}")  # 调试：打印前 2 行
-                for idx, row in enumerate(rows):
-                    cells = row.find_all('td')
-                    if len(cells) >= 3:  # 假设 IP、Port、Type 是前三个列
-                        ip = cells[0].text.strip()
-                        port = cells[1].text.strip()
-                        proxy_type_raw = cells[2].text.strip().lower()
-                        if proxy_type_raw == 'socks5':
-                            proxy_type = 'socks5'
-                        elif proxy_type_raw in ['http', 'https']:
-                            proxy_type = 'http'
-                        else:
-                            continue
-                        try:
-                            port = int(port)
-                            # 启用测试以过滤无效代理（可选）
-                            # if test_proxy(ip, port, proxy_type):
-                            name = f'{proxy_type}-{source["name"]}-{idx}'
-                            clash_proxy = {
-                                'name': name,
-                                'type': proxy_type,
-                                'server': ip,
-                                'port': port,
-                            }
-                            clash_proxies.append(clash_proxy)
-                            node_str = f'{proxy_type}://{ip}:{port}#{name}'
-                            sub_lines.append(base64.b64encode(node_str.encode()).decode())
-                            if len(clash_proxies) >= 50:  # 限制最大 50 个代理
-                                break
-                        except ValueError:
-                            logging.warning(f"Invalid proxy format from {source['name']}: {ip}:{port}")
-                            continue
-            else:
-                logging.warning(f"No table found in {source['name']} HTML")
     except Exception as e:
         logging.error(f"Failed to fetch from {source['name']}: {str(e)}")
 
