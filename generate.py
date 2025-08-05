@@ -12,13 +12,13 @@ def test_proxy(ip, port, proxy_type):
     测试代理是否可用
     """
     if proxy_type == 'http':
-        proxies = {'https': f'[invalid url, do not cite]
+        proxies = {'https': f'http://{ip}:{port}'}
     elif proxy_type == 'socks5':
         proxies = {'https': f'socks5://{ip}:{port}'}
     else:
         return False
     try:
-        response = requests.get('[invalid url, do not cite] proxies=proxies, timeout=10)
+        response = requests.get('https://api.ipify.org', proxies=proxies, timeout=10)
         logging.info(f"Proxy {ip}:{port} ({proxy_type}) test successful")
         return response.status_code == 200
     except Exception as e:
@@ -61,27 +61,30 @@ for source in proxy_sources:
         
         if source['type'] == 'text':
             # 处理文本文件（如 GitHub Raw 文件）
-            proxies = response.text.splitlines()
+            proxies = [line.strip() for line in response.text.splitlines() if line.strip() and ':' in line]
+            logging.info(f"Raw data sample from {source['name']}: {proxies[:5]}")  # 调试：打印前 5 行
             for idx, proxy in enumerate(proxies):
                 try:
-                    ip, port = proxy.split(':')
-                    proxy_type = source['proxy_type']
-                    # 测试代理（可选，根据需求启用或禁用）
-                    # if test_proxy(ip, int(port), proxy_type):
-                    name = f'{proxy_type}-{source["name"]}-{idx}'
-                    clash_proxy = {
-                        'name': name,
-                        'type': proxy_type,
-                        'server': ip,
-                        'port': int(port),
-                    }
-                    clash_proxies.append(clash_proxy)
-                    node_str = f'{proxy_type}://{ip}:{port}#{name}'
-                    sub_lines.append(base64.b64encode(node_str.encode()).decode())
-                    if len(clash_proxies) >= 50:  # 限制最大 50 个代理
-                        break
-                except ValueError:
-                    logging.warning(f"Invalid proxy format from {source['name']}: {proxy}")
+                    ip_port = proxy.split(':', 1)  # 只分割前两个部分
+                    if len(ip_port) == 2:
+                        ip, port = ip_port[0].strip(), int(ip_port[1].strip())
+                        proxy_type = source['proxy_type']
+                        # 测试代理（可选，根据需求启用）
+                        # if test_proxy(ip, port, proxy_type):
+                        name = f'{proxy_type}-{source["name"]}-{idx}'
+                        clash_proxy = {
+                            'name': name,
+                            'type': proxy_type,
+                            'server': ip,
+                            'port': port,
+                        }
+                        clash_proxies.append(clash_proxy)
+                        node_str = f'{proxy_type}://{ip}:{port}#{name}'
+                        sub_lines.append(base64.b64encode(node_str.encode()).decode())
+                        if len(clash_proxies) >= 50:  # 限制最大 50 个代理
+                            break
+                except (ValueError, IndexError) as e:
+                    logging.warning(f"Invalid proxy format from {source['name']}: {proxy} - {str(e)}")
                     continue
         elif source['type'] == 'html':
             # 处理 HTML 页面（如 openproxylist.com）
@@ -89,6 +92,7 @@ for source in proxy_sources:
             table = soup.find('table')  # 假设代理列表在第一个表格中
             if table:
                 rows = table.find_all('tr')[1:]  # 跳过表头
+                logging.info(f"Raw HTML table sample from {source['name']}: {rows[:2]}")  # 调试：打印前 2 行
                 for idx, row in enumerate(rows):
                     cells = row.find_all('td')
                     if len(cells) >= 3:  # 假设 IP、Port、Type 是前三个列
@@ -103,7 +107,7 @@ for source in proxy_sources:
                             continue
                         try:
                             port = int(port)
-                            # 测试代理（可选，根据需求启用或禁用）
+                            # 测试代理（可选，根据需求启用）
                             # if test_proxy(ip, port, proxy_type):
                             name = f'{proxy_type}-{source["name"]}-{idx}'
                             clash_proxy = {
